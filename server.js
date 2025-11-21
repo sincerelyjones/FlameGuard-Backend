@@ -1,24 +1,50 @@
-// server.ts
+// server.js
 import express from "express";
 import admin from "firebase-admin";
 import bodyParser from "body-parser";
-import fs from "fs";
+import dotenv from "dotenv";
+
+dotenv.config(); // Load .env variables
 
 const app = express();
 app.use(bodyParser.json());
 
-// Load service account
-const serviceAccount = JSON.parse(fs.readFileSync("./service-account.json", "utf8"));
+// Make sure GOOGLE_CREDENTIALS exists
+if (!process.env.GOOGLE_CREDENTIALS) {
+  console.error("❌ GOOGLE_CREDENTIALS environment variable is missing!");
+  process.exit(1);
+}
 
+// Parse service account JSON
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+} catch (err) {
+  console.error("❌ Failed to parse GOOGLE_CREDENTIALS:", err);
+  process.exit(1);
+}
+
+// Replace escaped newlines with real newlines
+if (serviceAccount.private_key) {
+  serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+}
+
+// Initialize Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
+});
+
+app.get("/", (req, res) => {
+  res.send("✅ FCM Server is running!");
 });
 
 app.post("/send-notification", async (req, res) => {
   const { fcmToken, title, body } = req.body;
 
   if (!fcmToken || !title || !body) {
-    return res.status(400).json({ success: false, error: "Missing fcmToken, title or body" });
+    return res
+      .status(400)
+      .json({ success: false, error: "Missing fcmToken, title, or body" });
   }
 
   const message = {
@@ -27,7 +53,7 @@ app.post("/send-notification", async (req, res) => {
     android: {
       priority: "high",
       notification: {
-        channelId: "default", // Make sure app creates this channel
+        channelId: "default",
         sound: "default",
       },
     },
@@ -51,8 +77,6 @@ app.post("/send-notification", async (req, res) => {
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("FCM Server running ✅");
-});
-
-app.listen(3000, () => console.log("Server running on port 3000"));
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
